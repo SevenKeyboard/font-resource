@@ -125,8 +125,8 @@ class FontResource
         obj:=objFromPtrAddRef(lParam)
         ,lfFaceName := strGet(lpelfe+28, LF_FACESIZE)
         ,elfFullName:= strGet(lpelfe+92, LF_FULLFACESIZE)
-        if (obj.faceName=="" || obj.faceName==lfFaceName)
-        && (obj.fullName=="" || obj.fullName==elfFullName)    {
+        if (obj.faceName=="" || obj.faceName=lfFaceName)
+        && (obj.fullName=="" || obj.fullName=elfFullName)    {
             obj.exist:=true
             return false
         }
