@@ -124,7 +124,7 @@ class FontResource
     static _enumFontFamExProc(lpelfe, lpntme, FontType, lParam)    {
         static LF_FACESIZE:=32, LF_FULLFACESIZE:=64
         if (A_PtrSize!==8)    {
-            lpelfe:=lpelfe<<32>>32
+             lpelfe:=lpelfe<<32>>32
             ,lpntme:=lpntme<<32>>32
             ,lParam:=lParam<<32>>32
         }
