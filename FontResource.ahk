@@ -1,4 +1,4 @@
-﻿#Requires AutoHotkey v1.1.35+
+﻿#Requires AutoHotkey v2.0.0+
 ;==============================================================
 ; FontResource — GDI font resource and existence helper
 ;
@@ -11,26 +11,27 @@
 ;     https://learn.microsoft.com/en-us/previous-versions/dd162618(v=vs.85)
 ;   LOGFONTW structure (wingdi.h)
 ;     https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-logfontw
-;   ENUMLOGFONTEXA structure (wingdi.h)
-;     https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-enumlogfontexa?redirectedfrom=MSDN
+;   ENUMLOGFONTEXW structure (wingdi.h)
+;     https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-enumlogfontexw
 ;   Re: Code works with 64-bit AHK but not 32-bit
 ;     https://www.autohotkey.com/boards/viewtopic.php?f=76&t=86601#p380516
 ;==============================================================
 
 /*
 Example Usage:
-    msgbox % FontResource.exist("Noto Sans KR")                         ;  true
-    msgbox % FontResource.exist("Noto Sans Not-exist")                  ;  false
-    msgbox % FontResource.exist("Noto Sans KR", "NotoSansKR-Regular")   ;  true
-    msgbox % FontResource.exist("Noto Sans KR", "NotoSansKR-Not-exist") ;  false
+    msgbox(FontResource.exist("Noto Sans KR"))                              ;  true
+    msgbox(FontResource.exist("Noto Sans Not-exist"))                       ;  false
+    msgbox(FontResource.exist("Noto Sans KR", "Noto Sans KR Regular"))      ;  true
+    msgbox(FontResource.exist("Noto Sans KR", "Noto Sans KR Bold"))         ;  true
+    msgbox(FontResource.exist("Noto Sans KR", "Noto Sans KR Not-exist"))    ;  false
 */
 
 class VersionManager_FontResource
 {
-    static _ := VersionManager_FontResource._init()
-    _init()    {
+    static _ := this._init()
+    static _init()    {
         global
-        FONTRESOURCE_VERSION := "1.0.0"
+        FONTRESOURCE_VERSION := "1.0.1"
     }
 }
 class FontResource
@@ -67,68 +68,68 @@ class FontResource
         ,TRUETYPE_FONTTYPE  := 0x0004
         
         
-    add(unnamedParam1)    {
-        return dllCall("Gdi32.dll\AddFontResource", "Str",unnamedParam1, "Int")
-    }
-    addEx(name, fl, res:=0)    {
-        return dllCall("Gdi32.dll\AddFontResourceEx", "Str",name, "UInt",fl, "Ptr",res, "Int")
-    }
-    remove(lpFileName)    {
-        return dllCall("Gdi32.dll\RemoveFontResource", "Str",unnamedParam1, "Int")
-    }
-    removeEx(name, fl, pdv:=0)    {
-        return dllCall("Gdi32.dll\RemoveFontResourceEx", "Str",name, "UInt",fl, "Ptr",pdv, "Int")
-    }
-    sendFontChangeMessage(timeout:=100, fuFlags:=0x0002)    { ;  #define SMTO_ABORTIFHUNG 0x0002
+    static add(unnamedParam1)           => dllCall("Gdi32.dll\AddFontResourceW", "WStr",unnamedParam1, "Int")
+    static addEx(name, fl, res:=0)      => dllCall("Gdi32.dll\AddFontResourceExW", "WStr",name, "UInt",fl, "Ptr",res, "Int")
+    static remove(lpFileName)           => dllCall("Gdi32.dll\RemoveFontResourceW", "WStr",lpFileName, "Int")
+    static removeEx(name, fl, pdv:=0)   => dllCall("Gdi32.dll\RemoveFontResourceExW", "WStr",name, "UInt",fl, "Ptr",pdv, "Int")
+
+    static sendFontChangeMessage(timeout:=100, fuFlags:=0x0002)    { ;  #define SMTO_ABORTIFHUNG 0x0002
         static HWND_BROADCAST:=0xffff, WM_FONTCHANGE:=0x1D
         if (timeout)    {
-            lr:=dllCall("User32.dll\SendMessageTimeout"
+            lr:=dllCall("User32.dll\SendMessageTimeoutW"
                 ,"Ptr",HWND_BROADCAST
                 ,"UInt",WM_FONTCHANGE
                 ,"Ptr",0
                 ,"Ptr",0
                 ,"UInt",fuFlags
                 ,"UInt",timeout
-                ,"Ptr*",lpdwResult:=0
+                ,"Ptr*",&(lpdwResult:=0)
                 ,"Ptr")
             return (lr?lpdwResult:0)
         }  else  {
-            return dllCall("User32.dll\SendMessage", "Ptr",HWND_BROADCAST, "UInt",WM_FONTCHANGE, "Ptr",0, "Ptr",0, "Ptr")
+            return dllCall("User32.dll\SendMessageW", "Ptr",HWND_BROADCAST, "UInt",WM_FONTCHANGE, "Ptr",0, "Ptr",0, "Ptr")
         }
     }
-    exist(faceName:="", fullName:="", charSet:=1)    { ;  DEFAULT_CHARSET
+    static _enumFontFamExProcCallback:=0
+    static exist(faceName:="", fullName:="", charSet:=1)    { ;  DEFAULT_CHARSET
         static LF_FACESIZE:=32
         if (faceName=="" && fullName=="")
             return false
         hDC:=dllCall("User32.dll\GetDC", "Ptr",0, "Ptr")
-        varSetCapacity(lpLogfont, (A_IsUnicode?92:60), 0)
-        numPut(charSet, &lpLogfont, 23, "UChar") ;  lfCharSet
+        if (!hDC)
+            return false
+        lpLogfont:=buffer(92, 0)
+        numPut("UChar",charSet, lpLogfont, 23)  ;  lfCharSet
         if (faceName!=="")
-            strPut(faceName, &lpLogfont+28, LF_FACESIZE) ;  lfFaceName
-        numPut(0, &lpLogfont, 27, "UChar") ;  lfPitchAndFamily
-        dllCall("Gdi32.dll\EnumFontFamiliesEx"
+            strPut(faceName, lpLogfont.Ptr+28, LF_FACESIZE) ;  lfFaceName
+        numPut("UChar", 0, lpLogfont, 27) ;  lfPitchAndFamily
+        if (!this._enumFontFamExProcCallback)
+            this._enumFontFamExProcCallback:=callbackCreate(objBindMethod(this,"_enumFontFamExProc"),"F",4)
+        obj:={exist:false, faceName:faceName, fullName:fullName}
+        dllCall("Gdi32.dll\EnumFontFamiliesExW"
             ,"Ptr",hDC
-            ,"Ptr",&lpLogfont
-            ,"Ptr",registerCallback("fontResource_EnumFontFamExProc_BCA7674E","F",4)
-            ,"Ptr",lParam:=object(obj:={exist:false, faceName:faceName, fullName:fullName}) ;  https://www.autohotkey.com/docs/v1/lib/ObjAddRef.htm#ExBasic
+            ,"Ptr",lpLogfont.Ptr
+            ,"Ptr",this._enumFontFamExProcCallback
+            ,"Ptr",objPtr(obj) ;  https://www.autohotkey.com/docs/v2/Objects.htm#ObjPtr
             ,"UInt",0)
-        dllCall("User32.dll\ReleaseDC", "Ptr",0, "Ptr",hDC, "Int"), objRelease(lParam)
+        dllCall("User32.dll\ReleaseDC", "Ptr",0, "Ptr",hDC, "Int")
         return obj.exist
     }
-}
-fontResource_EnumFontFamExProc_BCA7674E(lpelfe, lpntme, FontType, lParam)    { ;  EnumFontFamExProc
-    static LF_FACESIZE:=32, LF_FULLFACESIZE:=64
-    if (A_PtrSize!==8)    {
-         lpelfe:=lpelfe<<32>>32
-        ,lpntme:=lpntme<<32>>32
-        ,lParam:=lParam<<32>>32
+    static _enumFontFamExProc(lpelfe, lpntme, FontType, lParam)    {
+        static LF_FACESIZE:=32, LF_FULLFACESIZE:=64
+        if (A_PtrSize!==8)    {
+            lpelfe:=lpelfe<<32>>32
+            ,lpntme:=lpntme<<32>>32
+            ,lParam:=lParam<<32>>32
+        }
+        obj:=objFromPtrAddRef(lParam)
+        ,lfFaceName := strGet(lpelfe+28, LF_FACESIZE)
+        ,elfFullName:= strGet(lpelfe+92, LF_FULLFACESIZE)
+        if (obj.faceName=="" || obj.faceName==lfFaceName)
+        && (obj.fullName=="" || obj.fullName==elfFullName)    {
+            obj.exist:=true
+            return false
+        }
+        return true
     }
-     lfFaceName := strGet(lpelfe+28, LF_FACESIZE)
-    ,elfFullName:= strGet(lpelfe+(A_IsUnicode?92:60), LF_FULLFACESIZE)
-    if (object(lParam).faceName=="" || object(lParam).faceName==lfFaceName)
-    && (object(lParam).fullName=="" || object(lParam).fullName==elfFullName)    {
-        object(lParam).exist:=true
-        return false
-    }
-    return true
 }
