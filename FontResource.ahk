@@ -21,11 +21,11 @@
 
 /*
 Example Usage:
-    msgbox % FontResource.exists("Noto Sans KR")                             ;  true
-    msgbox % FontResource.exists("Noto Sans Not-exist")                      ;  false
-    msgbox % FontResource.exists("Noto Sans KR", "Noto Sans KR Regular")     ;  true
-    msgbox % FontResource.exists("Noto Sans KR", "Noto Sans KR Bold")        ;  true
-    msgbox % FontResource.exists("Noto Sans KR", "Noto Sans KR Not-exist")   ;  false
+    msgBox % FontResource.exists("Noto Sans KR")                             ;  true
+    msgBox % FontResource.exists("Noto Sans Not-exist")                      ;  false
+    msgBox % FontResource.exists("Noto Sans KR", "Noto Sans KR Regular")     ;  true
+    msgBox % FontResource.exists("Noto Sans KR", "Noto Sans KR Bold")        ;  true
+    msgBox % FontResource.exists("Noto Sans KR", "Noto Sans KR Not-exist")   ;  false
 */
 
 class VersionManager_FontResource
