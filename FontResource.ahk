@@ -19,11 +19,11 @@
 
 /*
 Example Usage:
-    msgbox(FontResource.exist("Noto Sans KR"))                              ;  true
-    msgbox(FontResource.exist("Noto Sans Not-exist"))                       ;  false
-    msgbox(FontResource.exist("Noto Sans KR", "Noto Sans KR Regular"))      ;  true
-    msgbox(FontResource.exist("Noto Sans KR", "Noto Sans KR Bold"))         ;  true
-    msgbox(FontResource.exist("Noto Sans KR", "Noto Sans KR Not-exist"))    ;  false
+    msgbox(FontResource.exists("Noto Sans KR"))                              ;  true
+    msgbox(FontResource.exists("Noto Sans Not-exist"))                       ;  false
+    msgbox(FontResource.exists("Noto Sans KR", "Noto Sans KR Regular"))      ;  true
+    msgbox(FontResource.exists("Noto Sans KR", "Noto Sans KR Bold"))         ;  true
+    msgbox(FontResource.exists("Noto Sans KR", "Noto Sans KR Not-exist"))    ;  false
 */
 
 class VersionManager_FontResource
@@ -31,7 +31,7 @@ class VersionManager_FontResource
     static _ := this._init()
     static _init()    {
         global
-        FONTRESOURCE_VERSION := "1.0.1"
+        FONTRESOURCE_VERSION := "2.0.0"
     }
 }
 class FontResource
@@ -66,14 +66,15 @@ class FontResource
         ,DEVICE_FONTTYPE    := 0x0002
         ,RASTER_FONTTYPE    := 0x0001
         ,TRUETYPE_FONTTYPE  := 0x0004
-        
+
+        ,_SMTO_ABORTIFHUNG  := 0x0002
         
     static add(unnamedParam1)           => dllCall("Gdi32.dll\AddFontResourceW", "WStr",unnamedParam1, "Int")
     static addEx(name, fl, res:=0)      => dllCall("Gdi32.dll\AddFontResourceExW", "WStr",name, "UInt",fl, "Ptr",res, "Int")
     static remove(lpFileName)           => dllCall("Gdi32.dll\RemoveFontResourceW", "WStr",lpFileName, "Int")
     static removeEx(name, fl, pdv:=0)   => dllCall("Gdi32.dll\RemoveFontResourceExW", "WStr",name, "UInt",fl, "Ptr",pdv, "Int")
 
-    static sendFontChangeMessage(timeout:=100, fuFlags:=0x0002)    { ;  #define SMTO_ABORTIFHUNG 0x0002
+    static sendFontChangeMessage(timeout:=100, fuFlags:=this._SMTO_ABORTIFHUNG)    {
         static HWND_BROADCAST:=0xffff, WM_FONTCHANGE:=0x1D
         if (timeout)    {
             lr:=dllCall("User32.dll\SendMessageTimeoutW"
@@ -91,7 +92,7 @@ class FontResource
         }
     }
     static _enumFontFamExProcCallback:=0
-    static exist(faceName:="", fullName:="", charSet:=1)    { ;  DEFAULT_CHARSET
+    static exists(faceName:="", fullName:="", charSet:=this.DEFAULT_CHARSET)    {
         static LF_FACESIZE:=32
         if (faceName=="" && fullName=="")
             return false
@@ -105,7 +106,12 @@ class FontResource
         numPut("UChar", 0, lpLogfont, 27) ;  lfPitchAndFamily
         if (!this._enumFontFamExProcCallback)
             this._enumFontFamExProcCallback:=callbackCreate(objBindMethod(this,"_enumFontFamExProc"),"F",4)
-        obj:={exist:false, faceName:faceName, fullName:fullName}
+        /*
+        EnumFontFamiliesExW is synchronous, so lParam is passed ObjPtr(obj) without
+        taking an extra counted reference via AddRef/ObjRelease, relying on the local
+        obj variable remaining alive for the duration of the call.
+        */
+        obj:={exists:false, faceName:faceName, fullName:fullName}
         dllCall("Gdi32.dll\EnumFontFamiliesExW"
             ,"Ptr",hDC
             ,"Ptr",lpLogfont.Ptr
@@ -113,7 +119,7 @@ class FontResource
             ,"Ptr",objPtr(obj) ;  https://www.autohotkey.com/docs/v2/Objects.htm#ObjPtr
             ,"UInt",0)
         dllCall("User32.dll\ReleaseDC", "Ptr",0, "Ptr",hDC, "Int")
-        return obj.exist
+        return obj.exists
     }
     static _enumFontFamExProc(lpelfe, lpntme, FontType, lParam)    {
         static LF_FACESIZE:=32, LF_FULLFACESIZE:=64
@@ -122,12 +128,12 @@ class FontResource
             ,lpntme:=lpntme<<32>>32
             ,lParam:=lParam<<32>>32
         }
-        obj:=objFromPtrAddRef(lParam)
+        obj:=objFromPtrAddRef(lParam) ;  temporary counted reference for callback scope
         ,lfFaceName := strGet(lpelfe+28, LF_FACESIZE)
         ,elfFullName:= strGet(lpelfe+92, LF_FULLFACESIZE)
         if (obj.faceName=="" || obj.faceName=lfFaceName)
         && (obj.fullName=="" || obj.fullName=elfFullName)    {
-            obj.exist:=true
+            obj.exists:=true
             return false
         }
         return true
