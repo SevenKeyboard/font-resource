@@ -12,17 +12,20 @@
 ;   LOGFONTW structure (wingdi.h)
 ;     https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-logfontw
 ;   ENUMLOGFONTEXA structure (wingdi.h)
-;     https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-enumlogfontexa?redirectedfrom=MSDN
+;     https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-enumlogfontexa
+;   ENUMLOGFONTEXW structure (wingdi.h)
+;     https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-enumlogfontexw
 ;   Re: Code works with 64-bit AHK but not 32-bit
 ;     https://www.autohotkey.com/boards/viewtopic.php?f=76&t=86601#p380516
 ;==============================================================
 
 /*
 Example Usage:
-    msgbox % FontResource.exist("Noto Sans KR")                         ;  true
-    msgbox % FontResource.exist("Noto Sans Not-exist")                  ;  false
-    msgbox % FontResource.exist("Noto Sans KR", "NotoSansKR-Regular")   ;  true
-    msgbox % FontResource.exist("Noto Sans KR", "NotoSansKR-Not-exist") ;  false
+    msgbox % FontResource.exist("Noto Sans KR")                             ;  true
+    msgbox % FontResource.exist("Noto Sans Not-exist")                      ;  false
+    msgbox % FontResource.exist("Noto Sans KR", "Noto Sans KR Regular")     ;  true
+    msgbox % FontResource.exist("Noto Sans KR", "Noto Sans KR Bold")        ;  true
+    msgbox % FontResource.exist("Noto Sans KR", "Noto Sans KR Not-exist")   ;  false
 */
 
 class VersionManager_FontResource
@@ -30,7 +33,7 @@ class VersionManager_FontResource
     static _ := VersionManager_FontResource._init()
     _init()    {
         global
-        FONTRESOURCE_VERSION := "1.0.0"
+        FONTRESOURCE_VERSION := "1.0.1"
     }
 }
 class FontResource
@@ -74,7 +77,7 @@ class FontResource
         return dllCall("Gdi32.dll\AddFontResourceEx", "Str",name, "UInt",fl, "Ptr",res, "Int")
     }
     remove(lpFileName)    {
-        return dllCall("Gdi32.dll\RemoveFontResource", "Str",unnamedParam1, "Int")
+        return dllCall("Gdi32.dll\RemoveFontResource", "Str",lpFileName, "Int")
     }
     removeEx(name, fl, pdv:=0)    {
         return dllCall("Gdi32.dll\RemoveFontResourceEx", "Str",name, "UInt",fl, "Ptr",pdv, "Int")
@@ -96,20 +99,25 @@ class FontResource
             return dllCall("User32.dll\SendMessage", "Ptr",HWND_BROADCAST, "UInt",WM_FONTCHANGE, "Ptr",0, "Ptr",0, "Ptr")
         }
     }
+    static _enumFontFamExProcCallback:=0
     exist(faceName:="", fullName:="", charSet:=1)    { ;  DEFAULT_CHARSET
         static LF_FACESIZE:=32
         if (faceName=="" && fullName=="")
             return false
         hDC:=dllCall("User32.dll\GetDC", "Ptr",0, "Ptr")
+        if (!hDC)
+            return false
         varSetCapacity(lpLogfont, (A_IsUnicode?92:60), 0)
         numPut(charSet, &lpLogfont, 23, "UChar") ;  lfCharSet
         if (faceName!=="")
             strPut(faceName, &lpLogfont+28, LF_FACESIZE) ;  lfFaceName
         numPut(0, &lpLogfont, 27, "UChar") ;  lfPitchAndFamily
+        if (!this._enumFontFamExProcCallback)
+            this._enumFontFamExProcCallback:=registerCallback("fontResource_EnumFontFamExProc_BCA7674E","F",4)
         dllCall("Gdi32.dll\EnumFontFamiliesEx"
             ,"Ptr",hDC
             ,"Ptr",&lpLogfont
-            ,"Ptr",registerCallback("fontResource_EnumFontFamExProc_BCA7674E","F",4)
+            ,"Ptr",this._enumFontFamExProcCallback
             ,"Ptr",lParam:=object(obj:={exist:false, faceName:faceName, fullName:fullName}) ;  https://www.autohotkey.com/docs/v1/lib/ObjAddRef.htm#ExBasic
             ,"UInt",0)
         dllCall("User32.dll\ReleaseDC", "Ptr",0, "Ptr",hDC, "Int"), objRelease(lParam)
@@ -123,11 +131,12 @@ fontResource_EnumFontFamExProc_BCA7674E(lpelfe, lpntme, FontType, lParam)    { ;
         ,lpntme:=lpntme<<32>>32
         ,lParam:=lParam<<32>>32
     }
-     lfFaceName := strGet(lpelfe+28, LF_FACESIZE)
+    obj:=object(lParam)
+    ,lfFaceName := strGet(lpelfe+28, LF_FACESIZE)
     ,elfFullName:= strGet(lpelfe+(A_IsUnicode?92:60), LF_FULLFACESIZE)
-    if (object(lParam).faceName=="" || object(lParam).faceName==lfFaceName)
-    && (object(lParam).fullName=="" || object(lParam).fullName==elfFullName)    {
-        object(lParam).exist:=true
+    if (obj.faceName=="" || obj.faceName==lfFaceName)
+    && (obj.fullName=="" || obj.fullName==elfFullName)    {
+        obj.exist:=true
         return false
     }
     return true
